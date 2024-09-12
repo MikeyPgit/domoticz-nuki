@@ -1,8 +1,8 @@
 """
-<plugin key="NukiLock" name="Nuki Lock Plugin" author="heggink" version="1.0.6">
+<plugin key="NukiLock" name="Nuki Lock Plugin" author="heggink" version="1.0.8">
     <params>
         <param field="Port" label="Port" width="75px" required="true" default="8008"/>
-        <param field="Mode1" label="Bridge IP" width="150px" required="true" default="192.168.1.123"/>
+        <param field="Mode1" label="Bridge IP" width="150px" required="true" default="192.168.1.111"/>
         <param field="Mode2" label="Bridge token" width="75px" required="true" default="abcdefgh"/>
         <param field="Mode4" label="Bridge port" width="75px" required="true" default="8080"/>
         <param field="Mode3" label="Poll interval (m)" width="75px" required="true" default="10"/>	
@@ -50,8 +50,8 @@
 #    1.0.4 multiple small fixes as per giejay's fork
 #    1.0.5 catching success = false onheartbeat
 #    1.0.6 add unlatch button
-#
 #    1.0.7 enable Hashed tokens
+#    1.0.8 MP sep 2024 fixed unlatch overlapping indexes for more than one device on the bridge, unique connection name
 import Domoticz
 import json
 import sys
@@ -112,6 +112,9 @@ class BasePlugin:
         if Parameters["Mode6"] != "Normal":
             Domoticz.Debugging(1)
         DumpConfigToLog()
+
+        Domoticz.Debug('NUKI 1.0.8-MP hardware enabled')
+
         self.callbackPort = Parameters["Port"]
         self.bridgeIP = Parameters["Mode1"]
         self.bridgeToken = Parameters["Mode2"]
@@ -131,7 +134,6 @@ class BasePlugin:
 
         req = 'http://' + self.bridgeIP + ':' + self.bridgePort + '/list?' + self.generateTokenString()
         Domoticz.Debug('REQUESTING ' + req)
-#        resp = urllib.request.urlopen(req).read()
 
         try:
             resp = urllib.request.urlopen(req).read()
@@ -180,8 +182,11 @@ class BasePlugin:
 
 #           create unlatch device for every listed lock
             for i in range(num):
-                if ((2 * (i + 1)) not in Devices):
-                    Domoticz.Device(Name=resp[i]["name"]+"Unlatch", Unit=2*(i+1), TypeName="Switch", Switchtype=9, Used=1).Create()
+#                allow for 100 devices on the bridge
+#                if ((2 * (i + 1)) not in Devices):
+                if (((i + 101)) not in Devices):
+#                    Domoticz.Device(Name=resp[i]["name"]+"Unlatch", Unit=2*(i+1), TypeName="Switch", Switchtype=9, Used=1).Create()
+                    Domoticz.Device(Name=resp[i]["name"]+"Unlatch", Unit=(i+101), TypeName="Switch", Switchtype=9, Used=1).Create()
                     Domoticz.Log("Unlatch for Lock " + resp[i]["name"] + " created.")
                 else:
                     Domoticz.Debug("Unlatch for Lock " + resp[i]["name"] + " already exists.")
@@ -237,7 +242,8 @@ class BasePlugin:
 
 #	    now listen on the port for any state changes
             else:
-                self.httpServerConn = Domoticz.Connection(Name="Server Connection", Transport="TCP/IP", Protocol="HTML", Port=Parameters["Port"])
+#                self.httpServerConn = Domoticz.Connection(Name="Server Connection", Transport="TCP/IP", Protocol="HTML", Port=Parameters["Port"])
+                self.httpServerConn = Domoticz.Connection(Name="NUKI Bridge Connection", Transport="TCP/IP", Protocol="HTML", Port=Parameters["Port"])
                 self.httpServerConn.Listen()
 
             Domoticz.Debug("Leaving on start")
@@ -350,7 +356,7 @@ class BasePlugin:
         #    change the lock status
         self.heartbeats += 1
         Domoticz.Debug("onHeartbeat called " + str(self.heartbeats))
-#	heartbeat is every 10 seconds, pollinterval is in minutes 
+        #	heartbeat is every 10 seconds, pollinterval is in minutes 
         if (self.heartbeats / 6) >= self.pollInterval:
             self.heartbeats = 0
             Domoticz.Log("onHeartbeat check locks")
